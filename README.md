@@ -240,5 +240,3 @@ DELETE FROM articles WHERE id = 7;
 
 ---
 
-**Projet BD - ESISA**  
-**Encadré par : Pr. FENNANE SALMA**
