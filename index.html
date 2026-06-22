@@ -1,0 +1,159 @@
+<?php
+require_once 'backend/config.php';
+
+$articles_par_page = 4;
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$offset = ($page - 1) * $articles_par_page;
+
+$recherche = isset($_GET['q']) ? trim($_GET['q']) : '';
+$categorie_filtre = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
+
+$where = "WHERE a.statut = 'publie'";
+$params = [];
+
+if ($recherche !== '') {
+    $where .= " AND (a.titre LIKE :recherche OR a.contenu LIKE :recherche2)";
+    $params[':recherche'] = '%' . $recherche . '%';
+    $params[':recherche2'] = '%' . $recherche . '%';
+}
+
+if ($categorie_filtre > 0) {
+    $where .= " AND a.categorie_id = :cat";
+    $params[':cat'] = $categorie_filtre;
+}
+
+// Compter le total
+$sqlCount = "SELECT COUNT(DISTINCT a.id) AS total FROM articles a LEFT JOIN categories c ON a.categorie_id = c.id $where";
+$stmt = $pdo->prepare($sqlCount);
+$stmt->execute($params);
+$total_articles = $stmt->fetch()['total'];
+$total_pages = max(1, ceil($total_articles / $articles_par_page));
+
+// Requête SELECT avec JOIN (du cahier des charges)
+$sql = "SELECT a.id, a.titre, SUBSTRING(a.contenu, 1, 200) AS extrait,
+               a.image_principale, a.auteur,
+               c.nom AS categorie, a.date_publication,
+               COUNT(cm.id) AS nb_commentaires
+        FROM articles a
+        LEFT JOIN categories c ON a.categorie_id = c.id
+        LEFT JOIN commentaires cm ON a.id = cm.article_id AND cm.approuve = TRUE
+        $where
+        GROUP BY a.id
+        ORDER BY a.date_publication DESC
+        LIMIT :limit OFFSET :offset";
+
+$stmt = $pdo->prepare($sql);
+foreach ($params as $key => $value) {
+    $stmt->bindValue($key, $value);
+}
+$stmt->bindValue(':limit', $articles_par_page, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+$stmt->execute();
+$articles = $stmt->fetchAll();
+
+$categories = $pdo->query("SELECT * FROM categories ORDER BY nom")->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MinimalBlog - Plateforme de Publication</title>
+    <link rel="stylesheet" href="frontend/css/style.css">
+</head>
+<body>
+
+<header class="header">
+    <div class="container header-content">
+        <a href="index.html" class="logo">📝 MinimalBlog</a>
+        <nav class="nav">
+            <a href="index.html" class="nav-link">Accueil</a>
+            <a href="admin/login.html" class="nav-link nav-admin">Admin</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <div class="container">
+        <h1>Bienvenue sur MinimalBlog</h1>
+        <p>Découvrez des articles inspirants sur le voyage, la technologie, la cuisine et bien plus.</p>
+        <form class="search-form" method="GET" action="index.html">
+            <input type="text" name="q" placeholder="Rechercher un article..." value="<?= e($recherche) ?>" class="search-input">
+            <button type="submit" class="btn btn-primary">🔍 Rechercher</button>
+        </form>
+    </div>
+</section>
+
+<main class="container main-content">
+    <aside class="categories-bar">
+        <a href="index.html" class="category-link <?= $categorie_filtre === 0 ? 'active' : '' ?>">Toutes</a>
+        <?php foreach ($categories as $cat): ?>
+            <a href="index.html?cat=<?= $cat['id'] ?>" class="category-link <?= $categorie_filtre === (int)$cat['id'] ? 'active' : '' ?>">
+                <?= e($cat['nom']) ?>
+            </a>
+        <?php endforeach; ?>
+    </aside>
+
+    <?php if ($recherche !== '' || $categorie_filtre > 0): ?>
+        <div class="info-banner">
+            <?php if ($recherche !== ''): ?>Résultats pour : <strong>« <?= e($recherche) ?> »</strong><?php endif; ?>
+            <?= $total_articles ?> article(s) trouvé(s)
+            <a href="index.html" class="btn-link">✕ Effacer les filtres</a>
+        </div>
+    <?php endif; ?>
+
+    <section class="articles-grid">
+        <?php if (count($articles) === 0): ?>
+            <p class="no-results">Aucun article trouvé.</p>
+        <?php else: ?>
+            <?php foreach ($articles as $article): ?>
+                <article class="article-card">
+                    <?php if ($article['image_principale']): ?>
+                        <img src="<?= e($article['image_principale']) ?>" alt="<?= e($article['titre']) ?>" class="article-image">
+                    <?php endif; ?>
+                    <div class="article-body">
+                        <span class="article-category"><?= e($article['categorie'] ?? 'Sans catégorie') ?></span>
+                        <h2 class="article-title">
+                            <a href="article.html?id=<?= $article['id'] ?>"><?= e($article['titre']) ?></a>
+                        </h2>
+                        <p class="article-excerpt"><?= e($article['extrait']) ?>...</p>
+                        <div class="article-meta">
+                            <span>✍️ <?= e($article['auteur']) ?></span>
+                            <span>📅 <?= date('d/m/Y', strtotime($article['date_publication'])) ?></span>
+                            <span>💬 <?= $article['nb_commentaires'] ?></span>
+                        </div>
+                        <a href="article.html?id=<?= $article['id'] ?>" class="btn btn-primary">Lire la suite →</a>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </section>
+
+    <?php if ($total_pages > 1): ?>
+        <nav class="pagination">
+            <?php
+            $queryString = http_build_query(array_filter(['q' => $recherche, 'cat' => $categorie_filtre > 0 ? $categorie_filtre : null]));
+            $separator = $queryString ? '&' : '';
+            ?>
+            <?php if ($page > 1): ?>
+                <a href="?<?= $queryString . $separator ?>page=<?= $page - 1 ?>" class="page-link">← Précédent</a>
+            <?php endif; ?>
+            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                <a href="?<?= $queryString . $separator ?>page=<?= $i ?>" class="page-link <?= $i === $page ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $total_pages): ?>
+                <a href="?<?= $queryString . $separator ?>page=<?= $page + 1 ?>" class="page-link">Suivant →</a>
+            <?php endif; ?>
+        </nav>
+    <?php endif; ?>
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <p>&copy; <?= date('Y') ?> MinimalBlog - Projet BD ESISA</p>
+    </div>
+</footer>
+
+<script src="frontend/js/main.js"></script>
+</body>
+</html>

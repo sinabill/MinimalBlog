@@ -1,0 +1,90 @@
+<?php
+require_once '../backend/config.php';
+requireAdmin();
+
+$message = '';
+
+// DELETE article (du cahier des charges)
+if (isset($_GET['delete'])) {
+    $id = (int)$_GET['delete'];
+    $stmt = $pdo->prepare("DELETE FROM articles WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $message = "Article supprimé avec succès.";
+}
+
+$sql = "SELECT a.id, a.titre, a.auteur, a.date_publication, a.statut,
+               c.nom AS categorie, COUNT(cm.id) AS nb_commentaires
+        FROM articles a
+        LEFT JOIN categories c ON a.categorie_id = c.id
+        LEFT JOIN commentaires cm ON a.id = cm.article_id
+        GROUP BY a.id
+        ORDER BY a.date_publication DESC";
+$articles = $pdo->query($sql)->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion des articles - Admin</title>
+    <link rel="stylesheet" href="../frontend/css/style.css">
+</head>
+<body>
+
+<?php include 'partials/admin_header.php'; ?>
+
+<main class="container admin-main">
+    <div class="page-header">
+        <h1>📝 Gestion des articles</h1>
+        <a href="article_form.html" class="btn btn-primary">+ Nouvel article</a>
+    </div>
+
+    <?php if ($message): ?>
+        <div class="alert alert-success"><?= e($message) ?></div>
+    <?php endif; ?>
+
+    <div class="table-container">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Titre</th>
+                    <th>Catégorie</th>
+                    <th>Auteur</th>
+                    <th>Date</th>
+                    <th>Statut</th>
+                    <th>Comm.</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($articles as $a): ?>
+                    <tr>
+                        <td>#<?= $a['id'] ?></td>
+                        <td><strong><?= e($a['titre']) ?></strong></td>
+                        <td><?= e($a['categorie'] ?? '-') ?></td>
+                        <td><?= e($a['auteur']) ?></td>
+                        <td><?= date('d/m/Y', strtotime($a['date_publication'])) ?></td>
+                        <td>
+                            <span class="status status-<?= $a['statut'] ?>">
+                                <?= $a['statut'] === 'publie' ? '✓ Publié' : '✏️ Brouillon' ?>
+                            </span>
+                        </td>
+                        <td><?= $a['nb_commentaires'] ?></td>
+                        <td class="actions-cell">
+                            <a href="../article.html?id=<?= $a['id'] ?>" class="btn-action btn-view" title="Voir">👁️</a>
+                            <a href="article_form.html?id=<?= $a['id'] ?>" class="btn-action btn-edit" title="Modifier">✏️</a>
+                            <a href="?delete=<?= $a['id'] ?>" class="btn-action btn-delete"
+                               onclick="return confirm('Supprimer cet article ?')" title="Supprimer">🗑️</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (count($articles) === 0): ?>
+                    <tr><td colspan="8" class="no-results">Aucun article.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+</body>
+</html>

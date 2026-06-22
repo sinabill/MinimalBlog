@@ -1,0 +1,143 @@
+<?php
+require_once 'backend/config.php';
+
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$message = '';
+$messageType = '';
+
+// INSERT commentaire
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_commentaire'])) {
+    $pseudo = trim($_POST['pseudo'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $contenu = trim($_POST['contenu'] ?? '');
+
+    if ($pseudo === '' || $email === '' || $contenu === '') {
+        $message = "Tous les champs sont obligatoires.";
+        $messageType = 'error';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $message = "Adresse email invalide.";
+        $messageType = 'error';
+    } else {
+        $sql = "INSERT INTO commentaires (article_id, pseudo, email, contenu, date_commentaire, approuve)
+                VALUES (:article_id, :pseudo, :email, :contenu, NOW(), FALSE)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':article_id' => $id,
+            ':pseudo' => $pseudo,
+            ':email' => $email,
+            ':contenu' => $contenu
+        ]);
+        $message = "Votre commentaire a été soumis et sera publié après modération.";
+        $messageType = 'success';
+    }
+}
+
+$sql = "SELECT a.*, c.nom AS categorie FROM articles a
+        LEFT JOIN categories c ON a.categorie_id = c.id
+        WHERE a.id = :id AND a.statut = 'publie'";
+$stmt = $pdo->prepare($sql);
+$stmt->execute([':id' => $id]);
+$article = $stmt->fetch();
+
+if (!$article) {
+    header('Location: index.html');
+    exit;
+}
+
+$sql = "SELECT * FROM commentaires WHERE article_id = :id AND approuve = TRUE ORDER BY date_commentaire DESC";
+$stmt = $pdo->prepare($sql);
+$stmt->execute([':id' => $id]);
+$commentaires = $stmt->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= e($article['titre']) ?> - MinimalBlog</title>
+    <link rel="stylesheet" href="frontend/css/style.css">
+</head>
+<body>
+
+<header class="header">
+    <div class="container header-content">
+        <a href="index.html" class="logo">📝 MinimalBlog</a>
+        <nav class="nav">
+            <a href="index.html" class="nav-link">Accueil</a>
+            <a href="admin/login.html" class="nav-link nav-admin">Admin</a>
+        </nav>
+    </div>
+</header>
+
+<main class="container main-content">
+    <a href="index.html" class="back-link">← Retour aux articles</a>
+
+    <article class="article-full">
+        <?php if ($article['image_principale']): ?>
+            <img src="<?= e($article['image_principale']) ?>" alt="<?= e($article['titre']) ?>" class="article-full-image">
+        <?php endif; ?>
+        <span class="article-category"><?= e($article['categorie'] ?? 'Sans catégorie') ?></span>
+        <h1 class="article-full-title"><?= e($article['titre']) ?></h1>
+        <div class="article-meta">
+            <span>✍️ Par <strong><?= e($article['auteur']) ?></strong></span>
+            <span>📅 <?= date('d/m/Y à H:i', strtotime($article['date_publication'])) ?></span>
+        </div>
+        <div class="article-content"><?= nl2br(e($article['contenu'])) ?></div>
+    </article>
+
+    <section class="comments-section">
+        <h2>💬 Commentaires (<?= count($commentaires) ?>)</h2>
+
+        <?php if ($message): ?>
+            <div class="alert alert-<?= $messageType ?>"><?= e($message) ?></div>
+        <?php endif; ?>
+
+        <div class="comments-list">
+            <?php if (count($commentaires) === 0): ?>
+                <p class="no-results">Aucun commentaire pour le moment. Soyez le premier !</p>
+            <?php else: ?>
+                <?php foreach ($commentaires as $com): ?>
+                    <div class="comment">
+                        <div class="comment-header">
+                            <strong><?= e($com['pseudo']) ?></strong>
+                            <span class="comment-date"><?= date('d/m/Y H:i', strtotime($com['date_commentaire'])) ?></span>
+                        </div>
+                        <p class="comment-content"><?= nl2br(e($com['contenu'])) ?></p>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="comment-form-container">
+            <h3>Laisser un commentaire</h3>
+            <form method="POST" action="article.html?id=<?= $article['id'] ?>" class="comment-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pseudo">Pseudo *</label>
+                        <input type="text" id="pseudo" name="pseudo" required maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" id="email" name="email" required maxlength="100">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="contenu">Votre commentaire *</label>
+                    <textarea id="contenu" name="contenu" rows="5" required></textarea>
+                </div>
+                <button type="submit" name="ajouter_commentaire" class="btn btn-primary">Publier le commentaire</button>
+                <p class="form-note">⚠️ Votre commentaire sera publié après validation par l'auteur.</p>
+            </form>
+        </div>
+    </section>
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <p>&copy; <?= date('Y') ?> MinimalBlog - Projet BD ESISA</p>
+    </div>
+</footer>
+
+<script src="frontend/js/main.js"></script>
+</body>
+</html>

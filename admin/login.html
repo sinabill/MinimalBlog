@@ -1,0 +1,64 @@
+<?php
+require_once '../backend/config.php';
+
+$erreur = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $login = trim($_POST['login'] ?? '');
+    $password = $_POST['mot_de_passe'] ?? '';
+
+    if ($login === '' || $password === '') {
+        $erreur = 'Veuillez remplir tous les champs.';
+    } else {
+        $sql = "SELECT * FROM utilisateurs WHERE login = :login";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([':login' => $login]);
+        $user = $stmt->fetch();
+
+        if ($user && md5($password) === $user['mot_de_passe']) {
+            $_SESSION['admin_id'] = $user['id'];
+            $_SESSION['admin_login'] = $user['login'];
+            header('Location: dashboard.html');
+            exit;
+        } else {
+            $erreur = 'Identifiants incorrects.';
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion Admin - MinimalBlog</title>
+    <link rel="stylesheet" href="../frontend/css/style.css">
+</head>
+<body class="login-page">
+
+<div class="login-container">
+    <div class="login-box">
+        <h1 class="login-title">🔐 Espace Admin</h1>
+        <p class="login-subtitle">MinimalBlog - Connectez-vous pour gérer votre blog</p>
+
+        <?php if ($erreur): ?>
+            <div class="alert alert-error"><?= e($erreur) ?></div>
+        <?php endif; ?>
+
+        <form method="POST" action="login.html" class="login-form">
+            <div class="form-group">
+                <label for="login">Identifiant</label>
+                <input type="text" id="login" name="login" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="mot_de_passe">Mot de passe</label>
+                <input type="password" id="mot_de_passe" name="mot_de_passe" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Se connecter</button>
+        </form>
+
+        <a href="../index.html" class="back-link">← Retour au site</a>
+    </div>
+</div>
+
+</body>
+</html>

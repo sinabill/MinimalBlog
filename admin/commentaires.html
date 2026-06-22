@@ -1,0 +1,138 @@
+<?php
+require_once '../backend/config.php';
+requireAdmin();
+
+$message = '';
+$messageType = 'success';
+
+// ===== UPDATE : approuver un commentaire (requête du cahier des charges) =====
+if (isset($_GET['approve'])) {
+    $id = (int)$_GET['approve'];
+    // UPDATE commentaires SET approuve = TRUE WHERE id = ?
+    $stmt = $pdo->prepare("UPDATE commentaires SET approuve = TRUE WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $message = "Commentaire approuvé avec succès.";
+}
+
+// ===== DELETE : supprimer un commentaire =====
+if (isset($_GET['delete'])) {
+    $id = (int)$_GET['delete'];
+    $stmt = $pdo->prepare("DELETE FROM commentaires WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $message = "Commentaire supprimé.";
+}
+
+// ===== Désapprouver un commentaire =====
+if (isset($_GET['unapprove'])) {
+    $id = (int)$_GET['unapprove'];
+    $stmt = $pdo->prepare("UPDATE commentaires SET approuve = FALSE WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $message = "Commentaire mis en attente.";
+}
+
+// Filtre : tous / en attente / approuvés
+$filter = $_GET['filter'] ?? 'all';
+$where = '';
+if ($filter === 'pending') {
+    $where = "WHERE c.approuve = FALSE";
+} elseif ($filter === 'approved') {
+    $where = "WHERE c.approuve = TRUE";
+}
+
+// Récupérer les commentaires avec le titre de l'article
+$sql = "SELECT c.*, a.titre AS article_titre
+        FROM commentaires c
+        JOIN articles a ON c.article_id = a.id
+        $where
+        ORDER BY c.date_commentaire DESC";
+$commentaires = $pdo->query($sql)->fetchAll();
+
+// Compteurs
+$nb_pending = $pdo->query("SELECT COUNT(*) FROM commentaires WHERE approuve=FALSE")->fetchColumn();
+$nb_approved = $pdo->query("SELECT COUNT(*) FROM commentaires WHERE approuve=TRUE")->fetchColumn();
+$nb_total = $nb_pending + $nb_approved;
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Modération commentaires - Admin</title>
+    <link rel="stylesheet" href="../frontend/css/style.css">
+</head>
+<body>
+
+<?php include 'partials/admin_header.php'; ?>
+
+<main class="container admin-main">
+    <h1>💬 Modération des commentaires</h1>
+
+    <?php if ($message): ?>
+        <div class="alert alert-<?= $messageType ?>"><?= e($message) ?></div>
+    <?php endif; ?>
+
+    <!-- Filtres -->
+    <div class="filter-tabs">
+        <a href="?filter=all" class="filter-tab <?= $filter === 'all' ? 'active' : '' ?>">
+            Tous (<?= $nb_total ?>)
+        </a>
+        <a href="?filter=pending" class="filter-tab <?= $filter === 'pending' ? 'active' : '' ?>">
+            ⏳ En attente (<?= $nb_pending ?>)
+        </a>
+        <a href="?filter=approved" class="filter-tab <?= $filter === 'approved' ? 'active' : '' ?>">
+            ✅ Approuvés (<?= $nb_approved ?>)
+        </a>
+    </div>
+
+    <!-- Liste des commentaires -->
+    <div class="moderation-list">
+        <?php if (count($commentaires) === 0): ?>
+            <p class="no-results">Aucun commentaire à afficher.</p>
+        <?php else: ?>
+            <?php foreach ($commentaires as $com): ?>
+                <div class="moderation-card <?= $com['approuve'] ? 'approved' : 'pending' ?>">
+                    <div class="moderation-header">
+                        <div>
+                            <strong><?= e($com['pseudo']) ?></strong>
+                            <span class="comment-email"><?= e($com['email']) ?></span>
+                            <span class="comment-date">
+                                📅 <?= date('d/m/Y H:i', strtotime($com['date_commentaire'])) ?>
+                            </span>
+                        </div>
+                        <span class="status status-<?= $com['approuve'] ? 'publie' : 'brouillon' ?>">
+                            <?= $com['approuve'] ? '✅ Approuvé' : '⏳ En attente' ?>
+                        </span>
+                    </div>
+
+                    <p class="moderation-article">
+                        Sur l'article : <a href="../article.html?id=<?= $com['article_id'] ?>">
+                            <?= e($com['article_titre']) ?>
+                        </a>
+                    </p>
+
+                    <div class="moderation-content">
+                        <?= nl2br(e($com['contenu'])) ?>
+                    </div>
+
+                    <div class="moderation-actions">
+                        <?php if (!$com['approuve']): ?>
+                            <a href="?approve=<?= $com['id'] ?>&filter=<?= $filter ?>"
+                               class="btn btn-success">✅ Approuver</a>
+                        <?php else: ?>
+                            <a href="?unapprove=<?= $com['id'] ?>&filter=<?= $filter ?>"
+                               class="btn btn-secondary">⏳ Désapprouver</a>
+                        <?php endif; ?>
+
+                        <a href="?delete=<?= $com['id'] ?>&filter=<?= $filter ?>"
+                           class="btn btn-danger"
+                           onclick="return confirm('Supprimer ce commentaire définitivement ?')">
+                            🗑️ Supprimer
+                        </a>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+</main>
+
+</body>
+</html>

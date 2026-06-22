@@ -1,0 +1,178 @@
+<?php
+require_once '../backend/config.php';
+requireAdmin();
+
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$isEdit = $id > 0;
+$message = '';
+$messageType = '';
+
+$article = [
+    'titre' => '', 'categorie_id' => '', 'contenu' => '',
+    'auteur' => $_SESSION['admin_login'] ?? '',
+    'image_principale' => '', 'statut' => 'brouillon'
+];
+
+if ($isEdit) {
+    $stmt = $pdo->prepare("SELECT * FROM articles WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $loaded = $stmt->fetch();
+    if ($loaded) {
+        $article = $loaded;
+    } else {
+        header('Location: articles.html');
+        exit;
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $titre = trim($_POST['titre'] ?? '');
+    $categorie_id = (int)($_POST['categorie_id'] ?? 0);
+    $contenu = trim($_POST['contenu'] ?? '');
+    $auteur = trim($_POST['auteur'] ?? '');
+    $image = trim($_POST['image_principale'] ?? '');
+    $statut = $_POST['statut'] ?? 'brouillon';
+
+    if ($titre === '' || $contenu === '' || $auteur === '') {
+        $message = "Veuillez remplir tous les champs obligatoires.";
+        $messageType = 'error';
+    } else {
+        if ($isEdit) {
+            // UPDATE
+            $sql = "UPDATE articles SET titre=:titre, categorie_id=:cat, contenu=:contenu,
+                    auteur=:auteur, image_principale=:image, statut=:statut WHERE id=:id";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':titre' => $titre, ':cat' => $categorie_id ?: null,
+                ':contenu' => $contenu, ':auteur' => $auteur,
+                ':image' => $image, ':statut' => $statut, ':id' => $id
+            ]);
+            $message = "Article modifié avec succès.";
+            $messageType = 'success';
+        } else {
+            // INSERT (du cahier des charges)
+            $sql = "INSERT INTO articles (categorie_id, titre, contenu, date_publication, auteur, image_principale, statut)
+                    VALUES (:cat, :titre, :contenu, NOW(), :auteur, :image, :statut)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':cat' => $categorie_id ?: null, ':titre' => $titre,
+                ':contenu' => $contenu, ':auteur' => $auteur,
+                ':image' => $image, ':statut' => $statut
+            ]);
+            $newId = $pdo->lastInsertId();
+            header("Location: article_form.html?id=$newId&created=1");
+            exit;
+        }
+
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        $article = $stmt->fetch();
+    }
+}
+
+if (isset($_GET['created'])) {
+    $message = "Article créé avec succès.";
+    $messageType = 'success';
+}
+
+$categories = $pdo->query("SELECT * FROM categories ORDER BY nom")->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title><?= $isEdit ? 'Modifier' : 'Nouvel' ?> article - Admin</title>
+    <link rel="stylesheet" href="../frontend/css/style.css">
+</head>
+<body>
+
+<?php include 'partials/admin_header.php'; ?>
+
+<main class="container admin-main">
+    <div class="page-header">
+        <h1><?= $isEdit ? '✏️ Modifier l\'article' : '➕ Nouvel article' ?></h1>
+        <a href="articles.html" class="btn btn-secondary">← Retour</a>
+    </div>
+
+    <?php if ($message): ?>
+        <div class="alert alert-<?= $messageType ?>"><?= e($message) ?></div>
+    <?php endif; ?>
+
+    <form method="POST" class="admin-form">
+        <div class="form-group">
+            <label for="titre">Titre *</label>
+            <input type="text" id="titre" name="titre" required maxlength="255" value="<?= e($article['titre']) ?>">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="categorie_id">Catégorie</label>
+                <select id="categorie_id" name="categorie_id">
+                    <option value="">-- Sans catégorie --</option>
+                    <?php foreach ($categories as $cat): ?>
+                        <option value="<?= $cat['id'] ?>" <?= (int)$article['categorie_id'] === (int)$cat['id'] ? 'selected' : '' ?>>
+                            <?= e($cat['nom']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="auteur">Auteur *</label>
+                <input type="text" id="auteur" name="auteur" required maxlength="100" value="<?= e($article['auteur']) ?>">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="image_principale">URL de l'image principale</label>
+            <input type="url" id="image_principale" name="image_principale" maxlength="255"
+                   value="<?= e($article['image_principale']) ?>" placeholder="https://exemple.com/image.jpg">
+        </div>
+
+        <div class="form-group">
+            <label for="contenu">Contenu *</label>
+            <div class="editor-toolbar">
+                <button type="button" onclick="formatText('bold')"><strong>B</strong></button>
+                <button type="button" onclick="formatText('italic')"><em>I</em></button>
+                <button type="button" onclick="formatText('underline')"><u>U</u></button>
+                <button type="button" onclick="formatText('list')">• Liste</button>
+            </div>
+            <textarea id="contenu" name="contenu" rows="12" required><?= e($article['contenu']) ?></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="statut">Statut</label>
+            <select id="statut" name="statut">
+                <option value="brouillon" <?= $article['statut'] === 'brouillon' ? 'selected' : '' ?>>📝 Brouillon</option>
+                <option value="publie" <?= $article['statut'] === 'publie' ? 'selected' : '' ?>>✅ Publié</option>
+            </select>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <?= $isEdit ? '💾 Enregistrer' : '➕ Créer l\'article' ?>
+            </button>
+            <a href="articles.html" class="btn btn-secondary">Annuler</a>
+        </div>
+    </form>
+</main>
+
+<script>
+function formatText(command) {
+    const textarea = document.getElementById('contenu');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = textarea.value.substring(start, end);
+    let formatted = selected;
+    switch (command) {
+        case 'bold': formatted = `**${selected}**`; break;
+        case 'italic': formatted = `*${selected}*`; break;
+        case 'underline': formatted = `_${selected}_`; break;
+        case 'list': formatted = selected.split('\n').map(l => '• ' + l).join('\n'); break;
+    }
+    textarea.value = textarea.value.substring(0, start) + formatted + textarea.value.substring(end);
+    textarea.focus();
+}
+</script>
+
+</body>
+</html>

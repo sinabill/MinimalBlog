@@ -1,0 +1,76 @@
+<?php
+require_once '../backend/config.php';
+requireAdmin();
+
+$nb_articles = $pdo->query("SELECT COUNT(*) FROM articles")->fetchColumn();
+$nb_publies = $pdo->query("SELECT COUNT(*) FROM articles WHERE statut='publie'")->fetchColumn();
+$nb_brouillons = $pdo->query("SELECT COUNT(*) FROM articles WHERE statut='brouillon'")->fetchColumn();
+$nb_com_attente = $pdo->query("SELECT COUNT(*) FROM commentaires WHERE approuve=FALSE")->fetchColumn();
+$nb_com_approuves = $pdo->query("SELECT COUNT(*) FROM commentaires WHERE approuve=TRUE")->fetchColumn();
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - MinimalBlog Admin</title>
+    <link rel="stylesheet" href="../frontend/css/style.css">
+</head>
+<body>
+
+<?php include 'partials/admin_header.php'; ?>
+
+<main class="container admin-main">
+    <h1>📊 Tableau de bord</h1>
+    <p class="welcome">Bienvenue, <strong><?= e($_SESSION['admin_login']) ?></strong> !</p>
+
+    <div class="stats-grid">
+        <div class="stat-card stat-blue">
+            <div class="stat-number"><?= $nb_articles ?></div>
+            <div class="stat-label">Articles total</div>
+        </div>
+        <div class="stat-card stat-green">
+            <div class="stat-number"><?= $nb_publies ?></div>
+            <div class="stat-label">Articles publiés</div>
+        </div>
+        <div class="stat-card stat-yellow">
+            <div class="stat-number"><?= $nb_brouillons ?></div>
+            <div class="stat-label">Brouillons</div>
+        </div>
+        <div class="stat-card stat-red">
+            <div class="stat-number"><?= $nb_com_attente ?></div>
+            <div class="stat-label">Commentaires en attente</div>
+        </div>
+        <div class="stat-card stat-purple">
+            <div class="stat-number"><?= $nb_com_approuves ?></div>
+            <div class="stat-label">Commentaires approuvés</div>
+        </div>
+    </div>
+
+    <div class="quick-actions">
+        <h2>Actions rapides</h2>
+        <div class="actions-grid">
+            <a href="articles.html" class="action-card">
+                <span class="action-icon">📝</span>
+                <span>Gérer les articles</span>
+            </a>
+            <a href="article_form.html" class="action-card">
+                <span class="action-icon">➕</span>
+                <span>Nouvel article</span>
+            </a>
+            <a href="commentaires.html" class="action-card">
+                <span class="action-icon">💬</span>
+                <span>Modérer les commentaires</span>
+                <?php if ($nb_com_attente > 0): ?>
+                    <span class="badge"><?= $nb_com_attente ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="../index.html" class="action-card">
+                <span class="action-icon">🏠</span>
+                <span>Voir le site</span>
+            </a>
+        </div>
+    </div>
+</main>
+
+</body>
+</html>
